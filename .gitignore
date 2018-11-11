@@ -1,0 +1,6 @@
+# tex files
+*.aux
+*.fdb*
+*.fls
+*.log
+*.gz

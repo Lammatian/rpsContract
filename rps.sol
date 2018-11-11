@@ -16,7 +16,7 @@ contract rpsContract {
     
     enum Shape { Rock, Paper, Scissors }
     
-    constructor () {
+    constructor () public {
         owner = msg.sender;
     }
 

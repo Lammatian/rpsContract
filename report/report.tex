@@ -1,0 +1,81 @@
+\documentclass{article}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{mathtools}
+\usepackage{float}
+\usepackage{bm}
+\usepackage[margin=1in]{geometry}
+\newcommand\bd{\bullet}
+\newcommand\wt{\circ}
+\makeatletter
+% we use \prefix@<level> only if it is defined
+\renewcommand{\@seccntformat}[1]{%
+  \ifcsname prefix@#1\endcsname
+    \csname prefix@#1\endcsname
+  \else
+    \csname the#1\endcsname\quad
+  \fi}
+% define \prefix@section
+\newcommand\prefix@section[1]{\thesection. #1}
+\newcommand\userule[1]{\mathrel{\overset{\makebox[0pt]{\mbox{\normalfont\tiny\sffamily #1}}}{=}}}
+\makeatother
+\title{BDL Coursework}
+\author{s1554741}
+\date{\today}
+
+\begin{document}
+    \maketitle
+
+    \section{The King of Ether}
+    The highest level overview of the smart contract for the
+    King of Ether is that anyone can become the King by
+    paying sufficient amount of Ether (at least as much as
+    the last King).
+    \\ \\
+    When the contract is created, we are saving the
+    information about the address of the owner in the
+    \verb|owner| variable and then automatically the creator
+    becomes the King with the message \verb|Let's play a game...| 
+    and with the value 1 wei.
+    \\ \\
+    Then we have multiple functions that allow other parties
+    to take part in the game and become the King themselves.
+    \verb|claimThrone(string message)| function allows the
+    user to pay a certain amount of Ether (\verb|payable|
+    keyword) and if the value is greater or equal from the
+    highest value (value that the last King payed), then the
+    user becomes the King with the message they passed to
+    the function. There is also a restriction on the amount
+    of Ether one can use to become the King (50 Ether) that
+    can be lifted by the owner of the contract as described
+    later. Moreover, any time a new King is determined, the
+    last King's earnings are saved in the \verb|earnings|
+    map under his address. This way any user that was the
+    King but got dethroned can recover their money using the
+    \verb|withdraw()| function. 
+    \\ \\
+    We also have one getter in the form of
+    \verb|getKingsTotal()| that allows to see how many kings
+    were there in total over the lifespan of the contract
+    and \verb|raiseRestriction()| that allows the owner to
+    lift the restriction described two paragraphs above and
+    allow users to pay more than 50 Ether to become the
+    King.
+    \\ \\
+    Thankfully I managed to become the King at one point
+    too. The ID of the transaction was 
+    \[
+        \texttt{0x903d0a4f95656cbfdbd520898fdfe811d39119e0d229a4effeb14a93d353a79f},
+    \]
+    my address is
+    \[
+        \texttt{0x47ADEE763A7BDE2a03c029725C5f7c9315f3B42a}
+    \]
+    and the message I used for the transaction was
+    "\verb|Test transaction please ignore|".
+
+    \section{Rock-paper-scissors}
+
+\end{document}
