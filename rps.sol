@@ -41,10 +41,12 @@ contract rpsContract {
             require (msg.value == gameStake, "Stake needs to be equal to the other player's stake");
             gamePhase = GamePhase.Reveal;
             players[1] = msg.sender;
+            paid[msg.sender] = false;
         } else {
             gameStake = msg.value;
             gamePhase = GamePhase.Started;
             players[0] = msg.sender;
+            paid[msg.sender] = false;
         }
 
         hashed_choices[msg.sender] = hashed_choice;
@@ -81,8 +83,7 @@ contract rpsContract {
             if (paidCount == 2) {
                 reset();
             }
-        }
-        if (msg.sender == players[gameWinner - 1]) {
+        } else if (msg.sender == players[gameWinner - 1]) {
             msg.sender.transfer(2*gameStake);
             reset();
         }
