@@ -76,8 +76,8 @@ contract rpsContract {
         require(gamePhase == GamePhase.Finished, "Game not finished yet");
 
         if (gameWinner == 0 && !paid[msg.sender]) {
-            msg.sender.transfer(gameStake);
             paid[msg.sender] = true;
+            msg.sender.transfer(gameStake);
             paidCount += 1;
 
             if (paidCount == 2) {
