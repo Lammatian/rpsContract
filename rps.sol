@@ -2,20 +2,6 @@ pragma solidity ^0.4.16;
 
 contract rpsContract {
 
-    address owner;
-    mapping(address => uint256) hashed_choices;
-    mapping(address => uint8) choices;
-    mapping(address => bool) paid;
-    // Count if both players got paid (in terms of a tie)
-    uint paidCount;
-    Player[2] players;
-    // 0 - player 0, 1 - player 1, 2 - tie
-    uint gameWinner;
-    GamePhase gamePhase;
-    uint256 gameStake;
-    // How many players revealed their choices
-    uint revealed;
-
     struct Player {
         address add;
         bool revealed;
@@ -23,6 +9,15 @@ contract rpsContract {
         uint256 hashed_choice;
         uint8 choice;
     }
+
+    address owner;
+    // Count if both players got paid (in terms of a tie)
+    Player[2] players;
+    // 0 - player 0, 1 - player 1, 2 - tie
+    uint gameWinner;
+    uint256 timer;
+    GamePhase gamePhase;
+    uint256 gameStake;
     
     // Idle - waiting for new players
     // Started - one player started the game
@@ -34,8 +29,6 @@ contract rpsContract {
         owner = msg.sender;
         gamePhase = GamePhase.Idle;
         gameStake = 0;
-        revealed = 0;
-        paidCount = 0;
         players[0] = Player(0, false, false, 0, 0);
         players[1] = Player(0, false, false, 0, 0);
     }
@@ -44,9 +37,9 @@ contract rpsContract {
     Start a new game or get into an existing one by sending a hashed (sha3)
     value of the choice and a random (chosen by the player) seed
      */
-    function play(uint256 hashed_choice) public payable returns (string) {
+    function play(uint256 hashed_choice) public payable {
         require (gamePhase == GamePhase.Idle || gamePhase == GamePhase.Started, "Game is currently on");
-        require (msg.value >= 1 ether, "Stakes need to be at least 10 Wei");
+        require (msg.value >= 1 ether, "Stakes need to be at least 1 ether");
         require (msg.value % 2 == 0, "Stakes need to be divisible by 2");
 
         if (gamePhase == GamePhase.Idle) {
@@ -56,13 +49,12 @@ contract rpsContract {
         } else {
             require (msg.value / 2 == gameStake, "Stake needs to be equal to the other player's stake");
             gamePhase = GamePhase.Reveal;
+            timer = now;
             players[1] = Player(msg.sender, false, false, hashed_choice, 0);
         }
-
-        return "Ok";
     }
 
-    function reveal(uint256 nonce, uint8 choice) public returns (string) {
+    function reveal(uint256 nonce, uint8 choice) public {
         require(gamePhase == GamePhase.Reveal, "Game not in reveal phase yet");
         bytes memory reveal_val = abi.encodePacked(nonce, choice);
         uint8 p = determinePlayer(msg.sender);
@@ -75,10 +67,32 @@ contract rpsContract {
         if (players[0].revealed == true && players[1].revealed == true) {
             gamePhase = GamePhase.Finished;
             gameWinner = getWinner(int8(players[0].choice), int8(players[1].choice));
+        } else {
+            timer = now;
         }
     }
 
     function claim() public {
+        if (now - timer > 2 minutes && gamePhase == GamePhase.Reveal) {
+            if (players[0].revealed == true) {
+                players[0].got_paid = true;
+                players[0].add.transfer(4*gameStake);
+                reset();
+            } else if (players[1].revealed == true) {
+                players[1].got_paid = true;
+                players[1].add.transfer(4*gameStake);
+                reset();
+            } else {
+                players[0].got_paid = true;
+                players[1].got_paid = true;
+                players[0].add.transfer(2*gameStake);
+                players[1].add.transfer(2*gameStake);
+                reset();
+            }
+
+            return;
+        }
+
         require(gamePhase == GamePhase.Finished, "Game not finished yet");
         uint8 p = determinePlayer(msg.sender);
         require(p != 2, "You are not taking part in the game");
@@ -91,7 +105,7 @@ contract rpsContract {
             msg.sender.transfer(gameStake);
         } else if (gameWinner == 2) {
             players[p].got_paid = true;
-            msg.sender.transfer(gameStake);
+            msg.sender.transfer(2*gameStake);
         }
 
         if (players[0].got_paid && players[1].got_paid) {
