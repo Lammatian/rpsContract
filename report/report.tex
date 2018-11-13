@@ -78,4 +78,165 @@
 
     \section{Rock-paper-scissors}
 
+    \subsection{High level overview} \label{s:overview}
+    The most general idea behind my implementation is that
+    both players have to pay the same amount of Ether (say
+    \(2s\)) and then after the game is ended one of them can
+    win at most \(s\) from the other. This design decision
+    was made to incentivise both players to finish the game
+    even in case of a loss.
+    \newline
+
+    \noindent The game starts by a user calling the
+    \verb|play| function with a hashed value of of their
+    choice along with a nonce (for more information about
+    the commitment scheme refer to the section
+    \ref{s:scheme}). Then another person can join the game
+    by calling the \verb|play| function again with the same
+    amount of Ether as the first player and their own hashed
+    nonce-choice pair.
+    \newline
+
+    \noindent After both players have joined and made their
+    commitments, the game moves to the so-called `reveal
+    phase', where both players (in any order) have to, as
+    the name suggests, reveal their choices by calling the
+    \verb|reveal| function and providing their choice and
+    the nonce. After both players have done so, the game
+    moves on to the final `claim prize phase'.
+    \newline
+
+    \noindent In the last phase the players can, in any
+    order, claim their Ether back. Notice that, as mentioned
+    a few paragraphs above, {\itshape both} players have to
+    actually call the \verb|claim| function because they
+    both always get some money back - following from our
+    earlier example with \(2s\), in case of a win the player
+    finishes the game with \(3s\), in case of a tie with
+    \(2s\) and in case of a lose with \(1s\). After both
+    players have claimed their Ether the game is reset and a
+    new round can be started.
+
+    \subsection{Game termination}
+    The scenario described above refers to the expected game
+    flow, however it may be the case that either one or both
+    of the players stop the game mid-through. For this
+    eventuality, there is a timer that will allow a player
+    to reset the game to the start state if any of the
+    players is inactive for a set amount of time (2
+    minututes).
+    \newline
+
+    \noindent The way the timer works is that if during the
+    game any of the players is inactive for more than 2
+    minutes, then any player is able to reset the game to
+    the state where a new game can be started. If both
+    players fail to reveal their values, then any user on
+    the blockchain can call the \verb|claim| function that
+    will send the stakes back to both players from the last
+    game and allow a new game to be initiated. On the other
+    hand, if just one of the players reveals their value and
+    the second one doesn't, the person who doesn't reveal
+    their value gets penalised by not getting any of the
+    Ether back.
+    \newline
+
+    \noindent It is also worth pointing out that in the
+    current version of the game, once the game is finished
+    and the result is determined, both players are expected
+    to claim back their Ether, because otherwise a new game
+    won't be able to start. This is made with the assumption
+    that players are reasonable and will always want their
+    Ether back.
+
+    \subsection{Commitment scheme details} \label{s:scheme}
+    The commitment scheme used in the implementation is
+    written with the intention of maximum security and equal
+    gas costs for both players during a round. The protocol
+    starts by both players picking a random nonce and a
+    choice (rock/paper/scissors as either 1, 2 or 3
+    respectively), hashing both values using Solidity SHA3
+    function and then sending the hashes to the smart
+    contract. Once both players have done that, they reveal
+    what value they commited to by providing both the nonce
+    and the choice they made. Notice that this works due to
+    the one-way and collision resistance of hash functions -
+    the player cannot reverse hash function to obtain the
+    other players choice but also none of the players is
+    able to change their choice because that would require
+    finding a different nonce that would produce the exact
+    same hash.
+    \newline
+
+    \noindent Moreover, this seems like a good choice for
+    this protocol due to the fact that both players have to
+    perform the same exact operations which makes the gas
+    costs for both players similar in the first two phases
+    of the protocol (`start' and `reveal' phases).
+    \newline
+
+    \noindent In terms of nonce generation, a player could
+    technically come up with a nonce themself, however that
+    may be ill-advised due to low ability to create actual
+    randomness by people. Moreover, asking players to create
+    the nonces by themselves would most likely result in
+    short nonces that would be easy to find. Therefore along
+    with the contract code, I have created a short Python
+    script that, given user's choice (1, 2 or 3) generates a
+    nonce (by taking a random value between \(2^{128}\) and
+    \(2^{256}\)) and then hashes the nonce along with the
+    user's choice. One could argue that Python's
+    \verb|randint| function is not safe enough, although it
+    creates enough randomness to ensure that none of the
+    players will be able to crack the other player's nonce
+    in the time period that the game is on.
+
+    \subsection{Gas cost analysis}
+    Gas is an intrinsic part of the Ethereum system that
+    allows for the existence of smart contracts. In
+    contracts that consider only a case where one user will
+    interact with the contract we usually only care to make
+    the gas costs as small as possible. However in the case
+    where the contract is fundamentally implemented to allow
+    interaction between two parties, we not only have to
+    care about making the gas costs as low as possible, but
+    also to make them as {\itshape equal} as possible.
+    Unfortunately due to the nature of gas it is physically
+    impossible to make the contract use the same exact
+    amount of gas for both parties. We can however try to
+    make the difference as small as possible.
+    \newline
+
+    \noindent As mentioned in the \ref{s:overview} section,
+    the idea behind the game was to make it as symmetric as
+    possible so that both players have to make almost
+    exactly the same steps during the execution of one round
+    of rock-paper-scissors game. With the current
+    implementation of the contract, the player that
+    initiates the game has to pay around 13\% more gas than
+    the player joining second over the course of one round
+    of the game.
+    \newline
+
+    \noindent The difference in gas costs is not extremely
+    big, however such an implementation is obviously far
+    from perfect. First off, if parties know that the player
+    initiating the game will have to pay more gas in order
+    to finish the game, noone may want to be the person
+    starting the game, so we could potentially consider a
+    slight change to the protocol that would result in a
+    lower cost for the {\itshape first} player instead of
+    the second to actually incentivise players to start
+    games. Secondly, since the implementation tries to make
+    gas costs similar for both players, there is potentially
+    a lot of space in the code for optimisation that could
+    be done (and would result in less overall gas costs),
+    however that could mean bigger discrepancy in the gas
+    costs between the players. There is definitely a
+    trade-off here that can be best resolved by trial and
+    error with different approaches.
+    
+    \subsection{Attempts at improving the gas costs}
+
+
 \end{document}
