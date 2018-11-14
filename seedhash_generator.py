@@ -5,5 +5,5 @@ seed = randint(2**128, 2**256)
 choice = int(input("Pick a choice: "))
 
 h = Web3.soliditySha3(['uint256', 'uint8'], [seed, choice])
-print(seed)
-print(int(h.hex(), 16))
+print("Seed:", seed)
+print("Hash:", int(h.hex(), 16))
