@@ -237,6 +237,86 @@
     error with different approaches.
     
     \subsection{Attempts at improving the gas costs}
+    Gas system in Solidity is surprisingly (but
+    understandably) complex. Every `machine code' operation
+    has its associated gas cost that the party calling the
+    function has to pay when said operation is executed.
+    While analysing the intricacies of Solidity gas costs, I
+    have come up with a few ideas of how the code could
+    possibly be adjusted in order to equalise/minimise gas
+    usage.
+
+    \subsubsection{Storage and non-zero states}
+    First very interesting thing about gas costs is the fact
+    that changing a value from a so-called `zero state' to a
+    `non-zero state' results in a SSTORE operation that
+    costs 20000 gas \cite{ypaper}. In my contract this
+    resulted the first game after deployment being
+    significantly (\(\sim\)25\%) more expensive than any
+    subsequent game. However, a few small tweaks (such as
+    changing from \verb|true| and \verb|false| to \verb|1|
+    and \verb|2| in the constructor) resulted in a code that
+    had no `zero states' at the beginning of the contract
+    and consequently removed all the SSTORE operations. This
+    seems quite unintuitive, but as far as my understanding
+    goes, working with non-zero integers is more gas
+    efficient than working with boolean values in Solidity.
+    \newline
+
+    \noindent Another interesting fact about the gas costs
+    is that even if an operation doesn't change from a `zero
+    state' of a variable to a `non-zero state', it still
+    costs 5000 gas \cite{ypaper}. Therefore one idea for
+    reducing the amount of gas required for a game would be
+    to get rid of some not necessarily required global
+    variables in the code. For example, we could potentially
+    get rid of the \verb|has_revealed| variable of each
+    player and try to work with just their \verb|choice| -
+    set choice to a value not in \(\{1,2,3\}\) when they
+    haven't yet revealed their choice. This way we would
+    save up on all the transactions that include changing
+    the state of the \verb|has_revealed| variable currently.
+    \newline
+
+    \noindent One more solution that may result in lower gas
+    costs is shortening the game. In the current
+    implementation both players have to call the contract
+    three times during the execution of a single game. We
+    could, at the cost of gas assymmetry make the game
+    shorter and include the Ether claiming phase of the game
+    in the reveal phase and use \verb|claim| only if one of
+    the players doesn't finish the game in time. A bit of
+    testing shows that this approach indeed results in
+    smaller gas costs in comparison to the original method
+    (\(\sim\)200000 for player 1 and \(\sim\)150000 for
+    player 2), however the gas costs differ by around 25\%
+    between the players.
+    \newline
+
+    \noindent The lesson here should be that storage in
+    Solidity is considered very expensive and the more
+    `stateless' the contract the cheaper it will be.
+
+    \subsubsection{Asymmetric protocol}
+    Another approach that I have considered for the contract
+    is an asymmetric protocol where the first player starts
+    the game, the second one joins and then the one who
+    reveals second gets their money during the reveal call,
+    whereas the other player has to call the \verb|claim|
+    method in order to retrieve the ether. Surprisingly,
+    even though the asymmetric nature could lead to an
+    assumption that gas costs cannot be similar, this
+    protocol seems to perform best in this regard. Both
+    players pay roughly 220000 gas for the whole game which
+    is at the same level as the original game but with
+    around 5\% difference between the gas costs of each
+    player. This seems like a good approach although again,
+    thorough testing should be done in order to tell with
+    hundred percent certainty that this is the way to go.
+
+    \section{Game code}
+    Below you can find the game code as well as the code for
+    the nonce and hash generation using Python.
 
 
 \end{document}
