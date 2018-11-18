@@ -16,6 +16,7 @@ contract rpsContract {
     Player[2] players;
     // 0 - player 0, 1 - player 1, 2 - tie
     uint gameWinner;
+    // Used to reset the game in case of inactivity
     uint256 timer;
     GamePhase gamePhase;
     uint256 gameStake;
@@ -59,6 +60,9 @@ contract rpsContract {
         }
     }
 
+    /**
+    Reveal your choice by providing the nonce and choice
+     */
     function reveal(uint256 nonce, uint8 choice) public {
         require(gamePhase == GamePhase.Reveal, "Game not in reveal phase yet");
         bytes memory reveal_val = abi.encodePacked(nonce, choice);
@@ -66,6 +70,8 @@ contract rpsContract {
         require(p != 2, "You are not taking part in the game");
         require(uint256(keccak256(reveal_val)) == players[p].hashed_choice, "Invalid seed and/or choice");
 
+        // save the choice and mark that
+        // the player have revealed the value
         players[p].choice = choice;
         players[p].revealed = true;
 
@@ -75,14 +81,19 @@ contract rpsContract {
             gamePhase = GamePhase.Finished;
             gameWinner = getWinner(int8(players[0].choice), int8(players[1].choice));
         } else {
-            // start the timer again after activity
+            // reset the timer due to activity
             timer = now;
         }
     }
 
+    /**
+    Claim money or reset the game in case of inactivity
+     */
     function claim() public {
         if (now - timer > 2 minutes && gamePhase == GamePhase.Reveal) {
+            // prevent reentrancy attack
             reset();
+
             // 2 minutes have passed since last activity
             // allow anyone to reset the game
             if (players[0].revealed == true) {
@@ -128,6 +139,10 @@ contract rpsContract {
         }
     }
 
+    /**
+    Determine the player based on the address.
+    Returns 2 if player is unknown 
+     */
     function determinePlayer(address add) private view returns(uint8) {
         if (players[0].add == add) {
             return 0;
@@ -138,10 +153,20 @@ contract rpsContract {
         }
     }
 
+    /**
+    Reset the game state to idle to allow new games
+    to be played
+     */
     function reset() private {
         gamePhase = GamePhase.Idle;
     }
     
+    /**
+    Determine the winner given choices of both players
+    0 + 3k means 'rock'
+    1 + 3k means 'paper'
+    2 + 3k means 'scissors'
+     */
     function getWinner(int8 a, int8 b) public view returns (uint8) {
         require(gamePhase == GamePhase.Finished, "Game not finished yet");
 
@@ -158,6 +183,10 @@ contract rpsContract {
         }
     }
 
+    /**
+    Helper function to be able to see what state
+    the game is currently in
+     */
     function getGamePhase() public view returns (string) {
         if (gamePhase == GamePhase.Idle) {
             return "Waiting for players";
@@ -176,6 +205,10 @@ contract rpsContract {
         }
     }
 
+    /**
+    Helper function to be able to see what is the
+    stake you need to put in to compete
+     */
     function getStake() public view returns (uint256) {
         return gameStake;
     }
