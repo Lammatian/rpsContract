@@ -7,6 +7,7 @@
 \usepackage{float}
 \usepackage{bm}
 \usepackage[margin=1in]{geometry}
+\input{solidity-highlighting.tex}
 \newcommand\bd{\bullet}
 \newcommand\wt{\circ}
 \makeatletter
@@ -22,7 +23,7 @@
 \newcommand\userule[1]{\mathrel{\overset{\makebox[0pt]{\mbox{\normalfont\tiny\sffamily #1}}}{=}}}
 \makeatother
 \title{BDL Coursework}
-\author{s1554741}
+\author{Mateusz Parafinski\\\small s1554741}
 \date{\today}
 
 \begin{document}
@@ -314,9 +315,24 @@
     thorough testing should be done in order to tell with
     hundred percent certainty that this is the way to go.
 
+    \subsection{Other people's vulnerabilities}
+    \begin{itemize}
+        \item Addition of nonce to choice
+        \item Timestamp attack of a miner
+        \item Can always reset before reveal (Wes)
+        \item Reentrancy in my old code
+        \item Didn't check who revealed (Me)
+        \item Didn't check who got paid already (Me)
+        \item Activity attack (wait for inactive, Me)
+    \end{itemize}
+
     \section{Game code}
     Below you can find the game code as well as the code for
     the nonce and hash generation using Python.
+    
+    \begin{lstlisting}[language=Solidity]
+    
+    \end{lstlisting}
 
 
 \end{document}
