@@ -6,6 +6,7 @@
 \usepackage{mathtools}
 \usepackage{float}
 \usepackage{bm}
+\usepackage[hidelinks]{hyperref}
 \usepackage[margin=1in]{geometry}
 \input{solidity-highlighting.tex}
 \newcommand\bd{\bullet}
@@ -34,39 +35,45 @@
     King of Ether is that anyone can become the King by
     paying sufficient amount of Ether (at least as much as
     the last King).
-    \\ \\
-    When the contract is created, we are saving the
-    information about the address of the owner in the
+    \newline
+
+    \noindent When the contract is created, we are saving
+    the information about the address of the owner in the
     \verb|owner| variable and then automatically the creator
     becomes the King with the message \verb|Let's play a game...| 
     and with the value 1 wei.
-    \\ \\
-    Then we have multiple functions that allow other parties
-    to take part in the game and become the King themselves.
-    \verb|claimThrone(string message)| function allows the
-    user to pay a certain amount of Ether (\verb|payable|
-    keyword) and if the value is greater or equal from the
-    highest value (value that the last King payed), then the
-    user becomes the King with the message they passed to
-    the function. There is also a restriction on the amount
-    of Ether one can use to become the King (50 Ether) that
-    can be lifted by the owner of the contract as described
-    later. Moreover, any time a new King is determined, the
-    last King's earnings are saved in the \verb|earnings|
-    map under his address. This way any user that was the
-    King but got dethroned can recover their money using the
-    \verb|withdraw()| function. 
-    \\ \\
-    We also have one getter in the form of
+    \newline
+
+    \noindent Then we have multiple functions that allow
+    other parties to take part in the game and become the
+    King themselves. \verb|claimThrone(string message)|
+    function allows the user to pay a certain amount of
+    Ether (\verb|payable| keyword) and if the value is
+    greater or equal from the highest value (value that the
+    last King payed), then the user becomes the King with
+    the message they passed to the function. There is also a
+    restriction on the amount of Ether one can use to become
+    the King (50 Ether) that can be lifted by the owner of
+    the contract as described later. Moreover, any time a
+    new King is determined, the last King's earnings are
+    saved in the \verb|earnings| map under his address. This
+    way any user that was the King but got dethroned can
+    recover their money with the bonus equal to the
+    difference between their value and the new King's value
+    using the \verb|withdraw()| function.
+    \newline
+
+    \noindent We also have one getter in the form of
     \verb|getKingsTotal()| that allows to see how many kings
     were there in total over the lifespan of the contract
     and \verb|raiseRestriction()| that allows the owner to
     lift the restriction described two paragraphs above and
     allow users to pay more than 50 Ether to become the
     King.
-    \\ \\
-    Thankfully I managed to become the King at one point
-    too. The ID of the transaction was 
+    \newline
+
+    \noindent Thankfully I managed to become the King at one
+    point too. The ID of the transaction was 
     \[
         \texttt{0x903d0a4f95656cbfdbd520898fdfe811d39119e0d229a4effeb14a93d353a79f},
     \]
@@ -82,10 +89,10 @@
     \subsection{High level overview} \label{s:overview}
     The most general idea behind my implementation is that
     both players have to pay the same amount of Ether (say
-    \(2s\)) and then after the game is ended one of them can
-    win at most \(s\) from the other. This design decision
-    was made to incentivise both players to finish the game
-    even in case of a loss.
+    \(x\)) and then after the game is ended one of them can
+    win at most \(\frac{x}{2}\) from the other. This design
+    decision was made to incentivise both players to finish
+    the game even in case of a loss.
     \newline
 
     \noindent The game starts by a user calling the
@@ -112,11 +119,11 @@
     a few paragraphs above, {\itshape both} players have to
     actually call the \verb|claim| function because they
     both always get some money back - following from our
-    earlier example with \(2s\), in case of a win the player
-    finishes the game with \(3s\), in case of a tie with
-    \(2s\) and in case of a lose with \(1s\). After both
-    players have claimed their Ether the game is reset and a
-    new round can be started.
+    earlier example with stake \(x\), in case of a win the
+    player finishes the game with \(\frac{3x}{2}\), in case
+    of a tie with \(x\) and in case of a lose with
+    \(\frac{x}{2}\). After both players have claimed their
+    Ether the game is reset and a new round can be started.
 
     \subsection{Game termination}
     The scenario described above refers to the expected game
@@ -315,19 +322,580 @@
     thorough testing should be done in order to tell with
     hundred percent certainty that this is the way to go.
 
-    \subsection{Other people's vulnerabilities}
-    \begin{itemize}
-        \item Addition of nonce to choice
-        \item Timestamp attack of a miner
-        \item Can always reset before reveal (Wes)
-        \item Reentrancy in my old code
-        \item Didn't check who revealed (Me)
-        \item Didn't check who got paid already (Me)
-        \item Activity attack (wait for inactive, Me)
-    \end{itemize}
+    \subsection{Vulnerability analysis}
+    When writing a smart contract, many things can go wrong
+    or unnoticed and then be used maliciously by other
+    parties. I am going to go through some of the
+    vulnerabilities I have found when analysing other
+    people's code over the past few weeks.
 
-    \section{Game code}
-    Below you can find the game code
+    \subsubsection{Reentrancy}
+    One of the very common vulnerabilities of smart
+    contracts is the ability to call back a function after
+    being transferred some funds before the state of the
+    function is updated to get more funds out of the
+    contract. Even though most students have taken into
+    account the fact that reentrancy is dangerous, it is not
+    difficult to forget about some possible cases where this
+    may happen. In one example, a student made sure to reset
+    the state if the game ended in the predicted way by
+    revealing the values by both players. However, in the
+    case where one or both of the players were inactive and
+    sort of a reset had to be called, the state update was
+    called after transfering the money to the players. This
+    obviously leads to the possibility of a reentrancy
+    attack. In code, this looks something along those lines:
+
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function claimMoney() {
+    if (msg.sender == winner) {
+        // here we prevent the reentrancy
+        updateState();
+        msg.sender.transfer(winnings);
+    }
+}
+
+function kickInactive() {
+    if (now - time > 1 hour) {
+        player1.transfer(stake/2);
+        player2.transfer(stake/2);
+        // here reentrancy is possible
+        updateState();
+    }
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \noindent Obviously \verb|player1| can exploit the
+    vulnerability by simply running the \verb|kickInactive|
+    function again when the money is being transferred to
+    them and get all the money instead of just half. The
+    lesson here is to make sure every time we are either
+    transfering money or calling a function of a different
+    contract that the state of our contract doesn't allow
+    any unwanted actions to be taken.
+
+    \subsubsection{Checking identities}
+    Another relatively simple vulnerability that I have
+    noticed is that whenever one of the players gets paid,
+    it isn't actually checked {\bfseries who} gets paid and
+    thus the same player can call the function in quick
+    succession and get all the money out of the contract. An
+    example of this attack can be seen here
+
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function claimWinnings() {
+    if (msg.sender == winner) {
+        msg.sender.transfer(winnings + deposit);
+    } else {
+        msg.sender.transfer(deposit);
+    }
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \noindent Obviously, this attack only works in a
+    symmetric scheme in which both players have to call the
+    \verb|claimWinnings| function to claim their money back,
+    i.e. if there is some kind of deposit that both of them
+    put in at the start of the game. If only the winner gets
+    money, then they will get all the money out of the
+    contract in the first run of the function anyway.
+    Nevertheless, if a contract involves interaction between
+    two parties and the way the contract should behave
+    differs by player, then we should always check for the
+    identity of the player and update the state based on the
+    action we have done as in here (based on the code from
+    Section \ref{s:code}):
+    
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function claimWinnings() {
+    player = determinePlayer(msg.sender);
+    require(!player.gotPaid, "Player already got paid");
+    // here we make sure the state gets updated
+    // before the function can be called again
+    player.gotPaid = true;
+
+    if (player == winner) {
+        player.transfer(winnings + deposit);
+    } else {
+        player.transfer(deposit);
+    }
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \subsubsection{`Inactivity' attack}
+    This is a bit more subtle vulnerability that makes use
+    of the fact that someone has to start the game and wait
+    for an opponent. Let's say that happens and we are
+    waiting for player 2 to join the game. What player 2
+    could do is wait until player 1 forgets that they have
+    started the game (or simply is bored of waiting longer
+    for an opponent) and then start the game and immediately
+    reveal their hand.
+    \newline
+
+    \noindent Now, we know that to prevent a player from
+    never revealing their hand, we need to include a timer
+    in the implementation to be able to reset in case of
+    inactivity. Therefore, since player 1 has forgot about
+    the game/is inactive for some other reason as planned by
+    malicious player 2, player 2 can just wait and claim all
+    the money.
+    \newline
+    
+    \noindent Since most games I have analysed had the same
+    model of the game flow, this attack works for most of
+    them and is not really a flaw if we implement some
+    counter-measures that player 1 can take in order to
+    prevent this from happening. One such measure would be
+    to enable player 1 to play with themself if noone else
+    decides to play with them, which can be seen in the
+    following code:
+
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function hashHand(bytes32 hash) payable public {
+    require(gameState <= 2);
+    
+    // enforce deposit for not completing protocol punishment
+    require(msg.value >= minBuyIn + minDeposit); 
+    
+    if (gameState == 1) {
+        gameState = 2;
+        player1State = PlayerState(msg.sender, hash, msg.value - minDeposit);
+        // the player stakes exclude the mandatory deposit (it does not take 
+        // part in the prize-pool)
+        
+    } else { // this must be gameState = 2
+        gameState = 3;
+        player2State = PlayerState(msg.sender, hash, msg.value - minDeposit);
+        time = now; // start timer for detecting inactivity
+        
+        // this is where "residuals", which is the overpaid excess money 
+        // that should be returned to their respective owners is tracked
+        if (player1State.stake >= player2State.stake) {
+            winnings = player2State.stake; // also calculating prize-pool
+            p1_residual = player1State.stake - player2State.stake + 1;
+            // offseting the residuals by 1 to avoid zeroes
+        } else {
+            winnings = player1State.stake;
+            p2_residual = player2State.stake - player1State.stake + 1;
+        }
+    }
+}
+/**
+...
+*/
+function revealHand(uint256 hand) public {
+    require(gameState >= 3);
+    if (gameState == 3) {
+
+        require(msg.sender == player2State.adress);
+        require(sha256(abi.encodePacked(hand)) == player2State.hash);
+        // the hash-based commitment scheme check
+        gameState = 4;
+        
+        p2_hand = hand % 10 + 3; // saving with the offset for avoiding zeroes
+        time = now; // overwrite timer for detecting inactivity
+
+    } else { // this must be gameState = 4
+    
+        require(msg.sender == player1State.adress);
+        require(sha256(abi.encodePacked(hand)) == player1State.hash);
+        
+        hand = hand % 10;
+        bool isDraw = (hand % 3 == p2_hand % 3);
+        bool player2Won = (hand % 3 == (p2_hand + 1) % 3);
+        
+        if (isDraw){
+            endGameGetPaid(player1State.adress, player2State.adress, 
+                            player1State.stake, player2State.stake, 0, false);
+                            // indicate draw with a 0-value winning,
+                            // residuals become the original stakes
+        } else {
+            if (player2Won) {
+                endGameGetPaid(player2State.adress, player1State.adress, 
+                                p2_residual, p1_residual, winnings, false);
+            } else {
+                endGameGetPaid(player1State.adress, player2State.adress, 
+                                p1_residual, p2_residual, winnings, false);
+            }   
+        }
+    }
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \noindent We can see that there is nothing here
+    preventing player 1 to, in case of noone else wanting to
+    play, start a game with themself and play it out and get
+    all the money back no matter of the result. Another
+    possible approach to solving this issue (with possibly
+    smaller gas costs) would be to allow a player to reset
+    the game state and get the money back as long as there
+    is just one player in the game, e.g. something like
+
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function withdraw() {
+    require(gamePhase == WaitingForPlayer2);
+    gamePhase = WaitingForPlayers;
+    player1.transfer(stake);
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \subsubsection{Hash calculation in the commitment}
+    In all the protocols I have looked at (including mine),
+    the second phase of the game is related to revealing the
+    commited value by both players. Usually, the players
+    provide the nonce and the choice as the arguments to the
+    revealing function which then checks whether the values
+    they have given hash to their earlier commitment.
+    \newline
+
+    \noindent There are multiple ways that a protocol could
+    define `combining' the values of the nonce and the
+    choice. I would like to focus here on two that I have
+    found to be vulnerable to attacks. From this point on I
+    will denote the nonce by \(n\) and the choice by \(c\).
+    \newline
+
+    \noindent The first and simpler version combines the
+    values of nonce and choice by simply adding them
+    together: \(n + c\). One contract that I have looked at
+    had this exact procedure for checking the commitment:
+
+    \begin{lstlisting}[language=Solidity]
+/**
+...
+*/
+function reveal(uint256 randInt, RPS choice) private {
+    require(registered(), "You have not registered for the game!");
+    require(gameInProgress(), "At least one player missing!");
+
+    // player1 always reveals his choice and random integer first.
+    if (gameState == State.NoReveal1 && msg.sender == player1) {
+        // Make sure that the hashes match and thus player1's commitement was valid.
+
+        // *** BELOW IS THE LINE WITH THE VULNERABILITY ***
+        require(player1Hash == sha256(bytes32(randInt + uint256(choice))), "Hashes 1 don't match!");
+
+        // Store the random integer and choice of player1.
+        player1randInt = randInt;
+        player1Choice = choice;
+        // Update the game sate to make sure it's player2's turn to reveal next.
+        gameState = State.NoReveal2;
+
+        // Update the time stamp to check for timeout later
+        timerStart = now;
+    }
+    /**
+    ...
+    */
+}
+/**
+...
+*/
+    \end{lstlisting}
+
+    \noindent As we can see, in the code, the contract
+    creator decided to combine the nonce and the choice by
+    adding them together. However, this leads to a quite
+    devastating attack - imagine the player initially chose
+    nonce \(n\) and choice \(c\) and got a hash \(h =
+    \text{sha256}(n + c)\). Notice that any pair
+    \((n-k,c+k)\) will lead to the same hash:
+    \[
+       \text{sha256}(n-k+c+k) = \text{sha256}(n+c) = h 
+    \]
+
+    \noindent which means that essentially a player can
+    change their choice at any given point before revealing
+    - in particular, they can change it after the other
+    person reveals their choice. Obviously this is far from
+    desired.
+    \newline
+
+    \noindent After I have notified the author of the
+    vulnerability, they came up with another protocol that
+    instead of adding the values together `appended' the
+    choice at the end of the nonce, so basically the joined
+    value was calculated as
+    \[
+        10n + (c\%3)
+    \]
+
+    \noindent and then hashed to produce
+    \[
+        h = \text{sha256}(10n + (c\%3)).
+    \]
+
+    \noindent Is this perfectly safe? Certainly the attack
+    suggested earlier will not work - providing \(n - k\) as
+    nonce and \(c + k\) as choice leads to \(h' =
+    \text{sha256}(10n - 10k + ((c + k) \% 3)))\) which with
+    very high probability leads to a hash different than our
+    original one, \(h \neq h'\). However, is there by any
+    chance another attack that could work here? Consider the
+    following corrected version of the code from above:
+
+    \begin{lstlisting}[language=Solidity]
+function revealRock(uint256 randInt) public{
+    // 'revealRock' reveals that the sender choice was Rock, and randInt in the random integer he
+    // used to generate the hash.
+    reveal(randInt, RPS.Rock); // RPS.Rock is 0
+}
+
+function revealPaper(uint256 randInt) public{
+    // 'revealPaper' reveals that the sender choice was Paper, and randInt in the random integer he
+    // used to generate the hash.
+    reveal(randInt, RPS.Paper); // RPS.Paper is 1
+}
+
+function revealScissors(uint256 randInt) public{
+    // 'revealScissors' reveals that the sender choice was Scissors, and randInt in the random integer he
+    // used to generate the hash.
+    reveal(randInt, RPS.Scissors); // RPS.Scissors is 2
+}
+
+function reveal(uint256 randInt, RPS choice) private {
+    require(registered(), "You have not registered for the game!");
+    require(gameInProgress(), "At least one player missing!");
+
+    // player1 always reveals his choice and random integer first.
+    if (gameState == State.NoReveal1 && msg.sender == player1) {
+        // Make sure that the hashes match and thus player1's commitement was valid.
+        require(player1Hash == sha256(bytes32(randInt*10 + uint256(choice))), "Hashes 1 don't match!");
+        // Store the random integer and choice of player1.
+        player1randInt = randInt;
+        player1Choice = choice;
+        // Update the game sate to make sure it's player2's turn to reveal next.
+        gameState = State.NoReveal2;
+
+        // Update the time stamp to check for timeout later
+        timerStart = now;
+    }
+    /**
+    ...
+    */
+}
+    \end{lstlisting}
+
+    \noindent I claim that this implementation leads to a
+    very effective attack that guarantees \(\frac{2}{3}\)
+    chance of a win and \(\frac{1}{3}\) chance of a draw
+    against an opponent that chooses each of the three
+    possibilities uniformly. The key to the attack is the
+    fact that Solidity, similar to many other programming
+    languages, works with numbers using modular arithmetic.
+    That is, if we have a variable of type \verb|uint8| with
+    value 250, say \verb|uint8 v = 250|, then \verb|v + 10|
+    will not result in \verb|v| being equal to 260 but to
+    \(260 \% 256 = 4\). The same goes for \verb|uint256| but
+    the modular arithmetic is done modulo \(2^{256}\).
+    \newline
+
+    \noindent The idea is that if we manage to overflow the
+    value of \verb|randInt*10| in the code above, then maybe
+    we are able to find a `collision' that allows us to
+    change our choice. Thus we are focused in finding two
+    numbers, say \(a\) and \(b\) such that 
+    \[
+        10a + k = 10b + l \text{ (mod 2}^{256})
+    \]
+
+    \noindent where \(k\) and \(l\) are two choices that we could
+    potentially make. We can rewrite the equation above to
+    produce
+    \[
+        10(a-b) = l - k \text{ (mod 2}^{256})
+    \]
+
+    \noindent so if we set \(x := a - b\), then we are
+    looking for an \(x\) and \(m\) such that
+    \[
+        10x + m2^{256} = l - k.
+    \]
+
+    \noindent It's not hard to prove that this has a
+    solution if and only if \(\gcd(10, 2^{256}) | l - k\)
+    and therefore since \(\gcd(10, 2^{256}) = 2\) we need
+    \(l\) and \(k\) to be such that \(2 | l - k\). Now,
+    since the code above only allows \(l,k \in \{0, 1,
+    2\}\), this will only work for \(l = 2\) and \(k = 0\)
+    or vice-versa, so we can only change between Rock and
+    Scissors. How do we calculate \(x\) and \(m\)? Here the
+    Extended Euclidean Algorithm helps us - this simple code
+    below allows us to calculate the values we are looking
+    for in a matter of milliseconds:
+
+    \begin{lstlisting}[language=Python]
+def xgcd(b, a):
+    x0, x1, y0, y1 = 1, 0, 0, 1
+    while a != 0:
+        q, b, a = b // a, a, b % a
+        x0, x1 = x1, x0 - q * x1
+        y0, y1 = y1, y0 - q * y1
+    return  b, x0, y0
+    \end{lstlisting}
+
+    \noindent Running this as \verb|xgcd(10, 2**256)| will
+    return three values - the greatest common divisor (2)
+    and \(x\) and \(m\) we have been looking for. And here,
+    we want to focus on \(x\), which is the `magic number'
+    that allows us to perform the
+    attack\footnote{\(x=92633671389852956338856788006950326282615987732512451231566067206330503711949\)}.
+    Following the reasoning from above, we can now pick any
+    two numbers \(a\) and \(b\) such that \(a - b = x\) and
+    guarantee that \(10a = 10b + 2 \text{ (mod 2}^{256})\),
+    which in turn allows us to always start the game by
+    picking rock and nonce \(a\) and then, if we see that
+    the opponent has revealed paper, change it to scissors
+    and nonce \(b\). This way we win any time the opponent
+    picks paper or scissors and draw whenever they pick
+    rock, giving the desired \(66.(6)\%\) chance of a win
+    and \(33.(3)\%\) change of a draw.
+    \newline
+
+    \noindent The script below produces a random pair \((a,
+    b)\) described above to facilitate the attack:
+
+    \begin{lstlisting}[language=Python]
+import hashlib, random
+
+magic = 92633671389852956338856788006950326282615987732512451231566067206330503711949
+
+def attack():
+    rand_int = random.randrange(0, magic)
+    rock = magic + rand_int
+    print("rock: {}".format(rock))
+    rock = (rock * 10) % 2**256
+    rock = rock.to_bytes(32, byteorder='big')
+    rock_hash = hashlib.sha256(rock).hexdigest()
+    scissors = rand_int
+    print("scissors: {}".format(scissors))
+    scissors = ((scissors * 10) + 2) % 2**256
+    scissors = scissors.to_bytes(32, byteorder='big')
+    scissors_hash = hashlib.sha256(scissors).hexdigest()
+
+    print("rock hash: 0x{}".format(str(rock_hash)))
+    print("scis hash: 0x{}".format(str(scissors_hash)))
+
+attack()
+    \end{lstlisting}
+    
+    \subsubsection{Timestamp attack}
+    Another very subtle type of attack requires one of the
+    players to be a miner or to cooperate with one. As we
+    know, in Ethereum the block timestamp tolerance is 900
+    seconds (15 minutes) \cite{ethrules}. Therefore, a miner
+    can post ones transaction on the block as if it happened
+    15 minutes later than the current time.
+    \newline
+
+    \noindent Imagine the following situation. A miner is
+    one of the players in the game and has the ability to
+    reveal their hand first (this is an important part that
+    will allow us to perform the attack). What the miner can
+    do is reveal their value after the other player joins
+    the game and then {\itshape immediately} call the
+    \verb|finish| function in the code below and hope to
+    mine the block with his call to the \verb|finish|
+    function. If he manages to mine the block, he sets the
+    block's timestamp to \verb|now + k| for \(k > 100\) and
+    thus the function will be executed as if the time limit
+    has passed and the other player did not reveal their
+    choice, so the miner will get all the money for that
+    game.
+
+    \begin{lstlisting}[language=Solidity]
+function reveal(string nonce, uint choice) public returns (string){
+    /**
+    ...
+    */
+    
+    //record time of first reveal
+    if (timeReveal==0) {
+        timeReveal = now;
+    }
+
+    /**
+    ...
+    */
+}
+
+function finish() public {
+    //both players need to have revealed or the second player needs to have missed the reveal window
+    require ((hasRevealed[player1] && hasRevealed[player2]) || now-timeReveal > 100);
+    
+    //avoid re-entrancy
+    uint payout = pot;
+    pot = 0;
+    
+    //if one party did not reveal, pay the other party
+    if (hasRevealed[player1] && !hasRevealed[player2]) {
+        player1.transfer(payout);
+        payout=0;
+    }
+    
+    if (hasRevealed[player2] && !hasRevealed[player1]) {
+        player2.transfer(payout);
+        payout=0;
+    }
+
+    /**
+    ...
+    */
+}
+    \end{lstlisting}
+
+    \noindent The obvious way to prevent this kind of attack
+    would be to change the time check to a value bigger than
+    900 seconds (e.g. 20 minutes = 1200 second) so that the
+    miner cannot immediately call the \verb|finish| function
+    and claim all the money as the check \verb|now - timeReveal > 1200| 
+    won't pass anymore.
+    \newline
+
+    \noindent It is however worth noting that two popular
+    Ethereum protocol implementations Geth and Parity both
+    reject blocks with timestamps more than {\bfseries 15
+    seconds} in the future \cite{ethsecu, geth, parity}.
+    Therefore there exists a so-called 15-second rule that
+    states that ``If the contract function can tolerate a
+    15-second drift in time, it is safe to use
+    block.timestamp'' \cite{ethsecu}, so this would most
+    likely be safe anyway.
+
+    \section{Game code} \label{s:code}
+    Below you can find the game code for my implementation
+    of the rock-paper-scissors game.
     
     \begin{lstlisting}[language=Solidity]
 pragma solidity ^0.4.16;
@@ -559,6 +1127,28 @@ h = Web3.soliditySha3(['uint256', 'uint8'], [seed, choice%3])
 print("Seed-choice:", str(seed) + ", " + str(choice%3))
 print("Hash:", int(h.hex(), 16))
     \end{lstlisting}
+
+    \begin{thebibliography}{9}
+        \bibitem{ethrules} 
+        Ethereum Block Protocol 2.0, wiki post created by
+        Github users {\bfseries ruchevits} and {\bfseries
+        heikoheiko},
+        \url{https://github.com/ethereum/wiki/blob/c02254611f218f43cbb07517ca8e5d00fd6d6d75/Block-Protocol-2.0.md}
+        
+        \bibitem{ethsecu}
+        Recommendations for Smart Contract Security in
+        Solidity,
+        \url{https://consensys.github.io/smart-contract-best-practices/recommendations/#timestamp-dependence}
+        
+        \bibitem{geth}
+        Geth protocol implementation of the timestamp rule,
+        \url{https://github.com/ethereum/go-ethereum/blob/4e474c74dc2ac1d26b339c32064d0bac98775e77/consensus/ethash/consensus.go#L45}
+
+        \bibitem{parity}
+        Parity protocol implementation of the timestamp
+        rule,
+        \url{https://github.com/paritytech/parity-ethereum/blob/73db5dda8c0109bb6bc1392624875078f973be14/ethcore/src/verification/verification.rs#L296-L307}
+    \end{thebibliography}
 
 
 \end{document}
