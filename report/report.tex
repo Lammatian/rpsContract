@@ -55,7 +55,7 @@
     the message they passed to the function. There is also a
     restriction on the amount of Ether one can use to become
     the King (50 Ether) that can be lifted by the owner of
-    the contract as described later. Moreover, any time a
+    the contract. Moreover, any time a
     new King is determined, the last King's earnings are
     saved in the \verb|earnings| map under his address. This
     way any user that was the King but got dethroned can
@@ -66,11 +66,7 @@
 
     \noindent We also have one getter in the form of
     \verb|getKingsTotal()| that allows to see how many kings
-    were there in total over the lifespan of the contract
-    and \verb|raiseRestriction()| that allows the owner to
-    lift the restriction described two paragraphs above and
-    allow users to pay more than 50 Ether to become the
-    King.
+    were there in total over the lifespan of the contract.
     \newline
 
     \noindent Thankfully I managed to become the King at one
@@ -83,7 +79,7 @@
         \texttt{0x47ADEE763A7BDE2a03c029725C5f7c9315f3B42a}
     \]
     and the message I used for the transaction was
-    "\verb|Test transaction please ignore|".
+    ``\verb|Test transaction please ignore|''.
 
     \section{Rock-paper-scissors}
 
@@ -91,17 +87,20 @@
     The most general idea behind my implementation is that
     both players have to pay the same amount of Ether (say
     \(x\)) and then after the game is ended one of them can
-    win at most \(\frac{x}{2}\) from the other. This design
-    decision was made to incentivise both players to finish
-    the game even in case of a loss.
+    win at most \(\frac{x}{2}\) from the other (with the
+    rest being the desposit). The design decision of having
+    a big deposit was made to incentivise both players to
+    finish the game even in case of a loss.
     \newline
 
     \noindent The game starts by a user calling the
-    \verb|play| function with a hashed value of of their
-    choice along with a nonce (for more information about
-    the commitment scheme refer to the section
-    \ref{s:scheme}). Then another person can join the game
-    by calling the \verb|play| function again with the same
+    \verb|play| function with a hashed value of their choice
+    along with a nonce (for more information about the
+    commitment scheme refer to Section \ref{s:scheme}). Then
+    another person\footnote{The second player could actually
+    be the same person as the first one for security reasons
+    - see Section \ref{s:playown}} can join the game by
+    calling the \verb|play| function again with the same
     amount of Ether as the first player and their own hashed
     nonce-choice pair.
     \newline
@@ -124,30 +123,29 @@
     player finishes the game with \(\frac{3x}{2}\), in case
     of a tie with \(x\) and in case of a lose with
     \(\frac{x}{2}\). After both players have claimed their
-    Ether the game is reset and a new round can be started.
+    Ether, the game is reset and a new round can be started.
 
     \subsection{Game termination}
     The scenario described above refers to the expected game
     flow, however it may be the case that either one or both
     of the players stop the game mid-through. For this
-    eventuality, there is a timer that will allow a player
-    to reset the game to the start state if any of the
-    players is inactive for a set amount of time (2
-    minututes).
+    eventuality, there is a timer that will allow anyone to
+    reset the game to the start state in case of inactivity.
     \newline
 
-    \noindent The way the timer works is that if during the
-    game any of the players is inactive for more than 2
-    minutes, then any player is able to reset the game to
-    the state where a new game can be started. If both
-    players fail to reveal their values, then any user on
-    the blockchain can call the \verb|claim| function that
-    will send the stakes back to both players from the last
-    game and allow a new game to be initiated. On the other
-    hand, if just one of the players reveals their value and
-    the second one doesn't, the person who doesn't reveal
-    their value gets penalised by not getting any of the
-    Ether back.
+    \noindent The timer has a threshold of 2 minutes and is
+    updated to current time at every activity after the game
+    starts (i.e. after both players provide a commitment).
+    Now, if the timer hasn't been updated in 2 minutes, then
+    any blockchain user can interact with the contract by
+    calling the \verb|claim| function. The function will,
+    based on whether any player has revealed their value or
+    not, send either half of the money to both players (so
+    each of them will get their investment back) or
+    everything to just one of them in case of just one
+    player failing to reveal - note that we are penalising
+    inactivity more than actual loss in the game, the player
+    doesn't get anything back if they bail.
     \newline
 
     \noindent It is also worth pointing out that in the
@@ -156,57 +154,60 @@
     to claim back their Ether, because otherwise a new game
     won't be able to start. This is made with the assumption
     that players are reasonable and will always want their
-    Ether back.
+    Ether back and that withholding the funds inside the
+    contract has no use to any party.
 
     \subsection{Commitment scheme details} \label{s:scheme}
     The commitment scheme used in the implementation is
     written with the intention of maximum security and equal
     gas costs for both players during a round. The protocol
     starts by both players picking a random nonce and a
-    choice (rock/paper/scissors as either 1, 2 or 3
+    choice (rock/paper/scissors as either 0, 1 or 2
     respectively), hashing both values using Solidity SHA3
     function and then sending the hashes to the smart
     contract. Once both players have done that, they reveal
     what value they commited to by providing both the nonce
-    and the choice they made. Notice that this works due to
-    the one-way and collision resistance of hash functions -
-    the player cannot reverse hash function to obtain the
-    other players choice but also none of the players is
-    able to change their choice because that would require
-    finding a different nonce that would produce the exact
-    same hash.
+    and the choice they made. Notice that this protocol
+    works due to the fact that hash functions are one-way
+    and collision resistant - the player cannot reverse hash
+    function to obtain the other players choice but also
+    none of the players is able to change their choice
+    because that would require finding a different nonce
+    that would produce the exact same hash.
     \newline
 
     \noindent Moreover, this seems like a good choice for
     this protocol due to the fact that both players have to
     perform the same exact operations which makes the gas
     costs for both players similar in the first two phases
-    of the protocol (`start' and `reveal' phases).
+    of the protocol (`start' and `reveal' phases) - see
+    Section \ref{s:gascost}.
     \newline
 
     \noindent In terms of nonce generation, a player could
-    technically come up with a nonce themself, however that
-    may be ill-advised due to low ability to create actual
-    randomness by people. Moreover, asking players to create
-    the nonces by themselves would most likely result in
-    short nonces that would be easy to find. Therefore along
-    with the contract code, I have created a short Python
-    script that, given user's choice (1, 2 or 3) generates a
-    nonce (by taking a random value between \(2^{128}\) and
-    \(2^{256}\)) and then hashes the nonce along with the
-    user's choice. One could argue that Python's
-    \verb|randint| function is not safe enough, although it
-    creates enough randomness to ensure that none of the
-    players will be able to crack the other player's nonce
-    in the time period that the game is on.
+    technically come up with a nonce themselves, however
+    that may be ill-advised due to the fact that people are
+    bad at making things random. Moreover, asking players to
+    create the nonces by themselves would most likely result
+    in short nonces that would be easy to find. Therefore
+    along with the contract code, I have created a short
+    Python script that, given user's choice (0, 1 or 2)
+    generates a nonce (by taking a random value between
+    \(2^{128}\) and \(2^{256}\)) and then hashes the nonce
+    along with the user's choice. One could argue that
+    potentially Python's \verb|randint| function may not be
+    safe enough, although it creates enough randomness to
+    ensure that none of the players will be able to crack
+    the other player's nonce in the time period that the
+    game is on.
 
-    \subsection{Gas cost analysis}
+    \subsection{Gas cost analysis} \label{s:gascost}
     Gas is an intrinsic part of the Ethereum system that
     allows for the existence of smart contracts. In
-    contracts that consider only a case where one user will
-    interact with the contract we usually only care to make
-    the gas costs as small as possible. However in the case
-    where the contract is fundamentally implemented to allow
+    contracts which don't allow for interaction with other
+    users, we usually only care to make the gas costs as
+    small as possible. However in the case where the
+    contract is fundamentally implemented to allow
     interaction between two parties, we not only have to
     care about making the gas costs as low as possible, but
     also to make them as {\itshape equal} as possible.
@@ -217,12 +218,12 @@
     \newline
 
     \noindent As mentioned in the \ref{s:overview} section,
-    the idea behind the game was to make it as symmetric as
-    possible so that both players have to make almost
-    exactly the same steps during the execution of one round
-    of rock-paper-scissors game. With the current
+    the idea behind the game was to make it symmetric so
+    that both players have to make almost exactly the same
+    steps during the execution of one round of
+    rock-paper-scissors game. With the current
     implementation of the contract, the player that
-    initiates the game has to pay around 13\% more gas than
+    initiates the game has to pay around 10\% more gas than
     the player joining second over the course of one round
     of the game. Table \ref{tab:gasTable} represents the
     average gas costs for each order of the play possible:
@@ -284,12 +285,12 @@
     the second to actually incentivise players to start
     games. Secondly, since the implementation tries to make
     gas costs similar for both players, there is potentially
-    a lot of space in the code for optimisation that could
-    be done (and would result in less overall gas costs),
-    however that could mean bigger discrepancy in the gas
-    costs between the players. There is definitely a
-    trade-off here that can be best resolved by trial and
-    error with different approaches.
+    a lot of potential for optimisation in the code (that
+    would result in less overall gas costs), however that
+    could mean bigger discrepancy in the gas costs between
+    the players. There is definitely a trade-off here that
+    can be best resolved by trial and error with different
+    approaches.
     
     \subsection{Attempts at improving the gas costs}
     Gas system in Solidity is surprisingly (but
@@ -306,7 +307,7 @@
     that changing a value from a so-called `zero state' to a
     `non-zero state' results in a SSTORE operation that
     costs 20000 gas \cite{ypaper}. In my contract this
-    resulted the first game after deployment being
+    resulted in the first game after deployment being
     significantly (\(\sim\)25\%) more expensive than any
     subsequent game. However, a few small tweaks (such as
     changing from \verb|true| and \verb|false| to \verb|1|
@@ -327,10 +328,10 @@
     variables in the code. For example, we could potentially
     get rid of the \verb|has_revealed| variable of each
     player and try to work with just their \verb|choice| -
-    set choice to a value not in \(\{1,2,3\}\) when they
+    set choice to a value not in \(\{0,1,2\}\) when they
     haven't yet revealed their choice. This way we would
     save up on all the transactions that include changing
-    the state of the \verb|has_revealed| variable currently.
+    the state of the \verb|has_revealed| variable.
     \newline
 
     \noindent One more solution that may result in lower gas
@@ -343,8 +344,8 @@
     the players doesn't finish the game in time. A bit of
     testing shows that this approach indeed results in
     smaller gas costs in comparison to the original method
-    (\(\sim\)200000 for player 1 and \(\sim\)150000 for
-    player 2), however the gas costs differ by around 25\%
+    (\(\sim\)100000 for player 1 and \(\sim\)80000 for
+    player 2), however gas costs differ by around 20\%
     between the players.
     \newline
 
@@ -362,12 +363,22 @@
     even though the asymmetric nature could lead to an
     assumption that gas costs cannot be similar, this
     protocol seems to perform best in this regard. Both
-    players pay roughly 220000 gas for the whole game which
+    players pay roughly 120000 gas for the whole game which
     is at the same level as the original game but with
     around 5\% difference between the gas costs of each
-    player. This seems like a good approach although again,
-    thorough testing should be done in order to tell with
-    hundred percent certainty that this is the way to go.
+    player instead of 10\%. This seems like a good approach
+    although again, thorough testing should be done in order
+    to tell with hundred percent certainty that this is the
+    way to go.
+
+    \subsubsection{Forced order}
+    Finally, one last thing to notice when looking at the
+    Table \ref{tab:gasTable} is that in the case when player
+    1 reveals first and player 2 claims first the gas costs
+    are nearly identical. Thus another approach at making
+    the costs equal could be dictating a strict order of
+    play where player 2 cannot reveal first and player 1
+    cannot claim the money first.
 
     \subsection{Vulnerability analysis}
     When writing a smart contract, many things can go wrong
@@ -380,18 +391,17 @@
     One of the very common vulnerabilities of smart
     contracts is the ability to call back a function after
     being transferred some funds before the state of the
-    function is updated to get more funds out of the
-    contract. Even though most students have taken into
-    account the fact that reentrancy is dangerous, it is not
-    difficult to forget about some possible cases where this
-    may happen. In one example, a student made sure to reset
-    the state if the game ended in the predicted way by
-    revealing the values by both players. However, in the
-    case where one or both of the players were inactive and
-    sort of a reset had to be called, the state update was
-    called after transfering the money to the players. This
-    obviously leads to the possibility of a reentrancy
-    attack. In code, this looks something along those lines:
+    smart contract is updated. Even though most students
+    have taken into account the fact that reentrancy is
+    dangerous, it is not difficult to forget about some
+    possible cases where this may happen. In one example, a
+    student made sure to reset the state if the game ended
+    in the usual manner. However, in the case where one or
+    both of the players were inactive some kind of a reset
+    had to be called, the state update was called after
+    transfering the money to the players. This obviously
+    leads to the possibility of a reentrancy attack. In the
+    code, this could look like:
 
     \begin{lstlisting}[language=Solidity]
 /**
@@ -422,10 +432,10 @@ function kickInactive() {
     vulnerability by simply running the \verb|kickInactive|
     function again when the money is being transferred to
     them and get all the money instead of just half. The
-    lesson here is to make sure every time we are either
-    transfering money or calling a function of a different
-    contract that the state of our contract doesn't allow
-    any unwanted actions to be taken.
+    lesson here is to make sure that every time we are
+    either transfering money or calling a function of a
+    different contract, the state of our contract doesn't
+    allow any unwanted actions to be taken.
 
     \subsubsection{Checking identities}
     Another relatively simple vulnerability that I have
@@ -487,34 +497,33 @@ function claimWinnings() {
 */
     \end{lstlisting}
 
-    \subsubsection{`Inactivity' attack}
+    \subsubsection{`Inactivity' attack} \label{s:playown}
     This is a bit more subtle vulnerability that makes use
     of the fact that someone has to start the game and wait
     for an opponent. Let's say that happens and we are
     waiting for player 2 to join the game. What player 2
     could do is wait until player 1 forgets that they have
-    started the game (or simply is bored of waiting longer
-    for an opponent) and then start the game and immediately
-    reveal their hand.
+    started the game (or simply gets bored of waiting for an
+    opponent) and then start the game and immediately reveal
+    their hand.
     \newline
 
     \noindent Now, we know that to prevent a player from
     never revealing their hand, we need to include a timer
     in the implementation to be able to reset in case of
     inactivity. Therefore, since player 1 has forgot about
-    the game/is inactive for some other reason as planned by
-    malicious player 2, player 2 can just wait and claim all
-    the money.
+    the game/is inactive for some other reason, player 2
+    can just wait and claim all the money.
     \newline
     
     \noindent Since most games I have analysed had the same
     model of the game flow, this attack works for most of
-    them and is not really a flaw if we implement some
-    counter-measures that player 1 can take in order to
-    prevent this from happening. One such measure would be
-    to enable player 1 to play with themself if noone else
-    decides to play with them, which can be seen in the
-    following code:
+    them and is not really an implementation flaw. We can
+    prevent this from happening by introducing some
+    counter-measures that player 1 can take. One such
+    measure would be to enable player 1 to play with
+    themselves if noone else decides to play with them,
+    which can be seen in the following code:
 
     \begin{lstlisting}[language=Solidity]
 /**
@@ -596,8 +605,8 @@ function revealHand(uint256 hand) public {
 
     \noindent We can see that there is nothing here
     preventing player 1 to, in case of noone else wanting to
-    play, start a game with themself and play it out and get
-    all the money back no matter of the result. Another
+    play, start a game with themselves and play it out and
+    get all the money back no matter of the result. Another
     possible approach to solving this issue (with possibly
     smaller gas costs) would be to allow a player to reset
     the game state and get the money back as long as there
@@ -618,12 +627,12 @@ function withdraw() {
     \end{lstlisting}
 
     \subsubsection{Hash calculation in the commitment}
-    In all the protocols I have looked at (including mine),
-    the second phase of the game is related to revealing the
-    commited value by both players. Usually, the players
-    provide the nonce and the choice as the arguments to the
-    revealing function which then checks whether the values
-    they have given hash to their earlier commitment.
+    In all the implementations I have looked at, the second
+    phase of the game is related to revealing the commited
+    value by both players. Usually, the players provide the
+    nonce and the choice as the arguments to the revealing
+    function which then checks whether the values they have
+    given hash to their earlier commitment.
     \newline
 
     \noindent There are multiple ways that a protocol could
@@ -671,7 +680,7 @@ function reveal(uint256 randInt, RPS choice) private {
 */
     \end{lstlisting}
 
-    \noindent As we can see, in the code, the contract
+    \noindent As we can see in the code, the contract
     creator decided to combine the nonce and the choice by
     adding them together. However, this leads to a quite
     devastating attack - imagine the player initially chose
@@ -684,9 +693,9 @@ function reveal(uint256 randInt, RPS choice) private {
 
     \noindent which means that essentially a player can
     change their choice at any given point before revealing
-    - in particular, they can change it after the other
-    person reveals their choice. Obviously this is far from
-    desired.
+    - in particular, they can change it {\itshape after} the
+    other person reveals their choice. Obviously this is far
+    from desired.
     \newline
 
     \noindent After I have notified the author of the
@@ -759,19 +768,19 @@ function reveal(uint256 randInt, RPS choice) private {
     chance of a win and \(\frac{1}{3}\) chance of a draw
     against an opponent that chooses each of the three
     possibilities uniformly. The key to the attack is the
-    fact that Solidity, similar to many other programming
+    fact that Solidity, similarly to many other programming
     languages, works with numbers using modular arithmetic.
     That is, if we have a variable of type \verb|uint8| with
     value 250, say \verb|uint8 v = 250|, then \verb|v + 10|
-    will not result in \verb|v| being equal to 260 but to
-    \(260 \% 256 = 4\). The same goes for \verb|uint256| but
-    the modular arithmetic is done modulo \(2^{256}\).
+    will not result in \verb|v| being equal to 260 but \(260
+    \% 256 = 4\). The same goes for \verb|uint256| but the
+    modular arithmetic is done modulo \(2^{256}\).
     \newline
 
     \noindent The idea is that if we manage to overflow the
     value of \verb|randInt*10| in the code above, then maybe
     we are able to find a `collision' that allows us to
-    change our choice. Thus we are focused in finding two
+    change our choice. Thus we are focused on finding two
     numbers, say \(a\) and \(b\) such that 
     \[
         10a + k = 10b + l \text{ (mod 2}^{256})
@@ -792,7 +801,7 @@ function reveal(uint256 randInt, RPS choice) private {
 
     \noindent It's not hard to prove that this has a
     solution if and only if \(\gcd(10, 2^{256}) | l - k\)
-    and therefore since \(\gcd(10, 2^{256}) = 2\) we need
+    and therefore, since \(\gcd(10, 2^{256}) = 2\) we need
     \(l\) and \(k\) to be such that \(2 | l - k\). Now,
     since the code above only allows \(l,k \in \{0, 1,
     2\}\), this will only work for \(l = 2\) and \(k = 0\)
@@ -851,6 +860,7 @@ def attack():
     scissors = scissors.to_bytes(32, byteorder='big')
     scissors_hash = hashlib.sha256(scissors).hexdigest()
 
+    # as we expect, those two will always be the same
     print("rock hash: 0x{}".format(str(rock_hash)))
     print("scis hash: 0x{}".format(str(scissors_hash)))
 
@@ -924,7 +934,7 @@ function finish() public {
 
     \noindent The obvious way to prevent this kind of attack
     would be to change the time check to a value bigger than
-    900 seconds (e.g. 20 minutes = 1200 second) so that the
+    900 seconds (e.g. 20 minutes = 1200 seconds) so that the
     miner cannot immediately call the \verb|finish| function
     and claim all the money as the check \verb|now - timeReveal > 1200| 
     won't pass anymore.
@@ -941,8 +951,8 @@ function finish() public {
     likely be safe anyway.
 
     \section{Game code} \label{s:code}
-    Below you can find the game code for my implementation
-    of the rock-paper-scissors game.
+    Below you can find the Solidity code for my
+    implementation of the rock-paper-scissors game.
     
     \begin{lstlisting}[language=Solidity]
 pragma solidity ^0.4.16;
@@ -1176,6 +1186,11 @@ print("Hash:", int(h.hex(), 16))
     \end{lstlisting}
 
     \begin{thebibliography}{9}
+        \bibitem{ypaper}
+        G. Wood, Ethereum: A secure decentralised
+        generalised transaction ledger,
+        \url{https://gavwood.com/paper.pdf}
+
         \bibitem{ethrules} 
         Ethereum Block Protocol 2.0, wiki post created by
         Github users {\bfseries ruchevits} and {\bfseries
