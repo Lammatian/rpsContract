@@ -614,12 +614,13 @@ function claimWinnings() {
     
     \noindent Since most games I have analysed had the same
     model of the game flow, this attack works for most of
-    them, but I wouldn't call it an implementation flaw. We
-    can prevent this from happening by introducing some
-    counter-measures that player 1 can take. One such
-    measure would be to enable player 1 to play with
-    themselves if noone else decides to play with them,
-    which can be seen in the following code:
+    them, but I wouldn't call it an implementation flaw -
+    it's forced by the nature of the game. We can prevent
+    this from happening by introducing some counter-measures
+    that player 1 can take. One such measure would be to
+    enable player 1 to play with themselves if noone else
+    decides to play with them, which can be seen in the
+    following code:
 
     \begin{lstlisting}[language=Solidity]
 /**
@@ -755,8 +756,6 @@ function reveal(uint256 randInt, RPS choice) private {
     // player1 always reveals his choice and random integer first.
     if (gameState == State.NoReveal1 && msg.sender == player1) {
         // Make sure that the hashes match and thus player1's commitement was valid.
-
-        // *** BELOW IS THE LINE WITH THE VULNERABILITY ***
         require(player1Hash == sha256(bytes32(randInt + uint256(choice))), "Hashes 1 don't match!");
 
         // Store the random integer and choice of player1.
@@ -777,11 +776,11 @@ function reveal(uint256 randInt, RPS choice) private {
 */
     \end{lstlisting}
 
-    \noindent As we can see in the code, the contract
-    creator decided to combine the nonce and the choice by
-    adding them together. However, this leads to a quite
-    devastating attack - imagine the player initially chose
-    nonce \(n\) and choice \(c\) and got a hash \(h =
+    \noindent As we can see in the code at line 11, the
+    contract creator decided to combine the nonce and the
+    choice by adding them together. However, this leads to a
+    quite devastating attack - imagine the player initially
+    chose nonce \(n\) and choice \(c\) and got a hash \(h =
     \text{sha256}(n + c)\). Notice that any pair
     \((n-k,c+k)\) will lead to the same hash:
     \[
@@ -883,9 +882,9 @@ function reveal(uint256 randInt, RPS choice) private {
         10a + k = 10b + l \text{ (mod 2}^{256})
     \]
 
-    \noindent where \(k\) and \(l\) are two choices that we could
-    potentially make. We can rewrite the equation above to
-    produce
+    \noindent where \(k,l \in \{0,1,2\}\) are two choices
+    that we could potentially change between. We can rewrite
+    the equation above to produce
     \[
         10(a-b) = l - k \text{ (mod 2}^{256})
     \]
@@ -920,9 +919,12 @@ def xgcd(b, a):
 
     \noindent Running this as \verb|xgcd(10, 2**256)| will
     return three values - the greatest common divisor (2)
-    and \(x\) and \(m\) we have been looking for. And here,
-    we want to focus on \(x\), which is the `magic number'
-    that allows us to perform the
+    and \(x\) and \(m\) we have been looking
+    for\footnote{Actually, since the \(x\) that the function
+    returns is negative, the it has to be converted to a
+    positive value that is congruent to it mod(256).}. And
+    here, we want to focus on \(x\), which is the `magic
+    number' that allows us to perform the
     attack\footnote{\(x=92633671389852956338856788006950326282615987732512451231566067206330503711949\)}.
     Following the reasoning from above, we can now pick any
     two numbers \(a\) and \(b\) such that \(a - b = x\) and
